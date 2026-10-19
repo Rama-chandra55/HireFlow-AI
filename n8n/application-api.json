@@ -1,0 +1,1001 @@
+{
+  "name": "HireFlow AI - Application API V1",
+  "nodes": [
+    {
+      "name": "POST /applications",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3536,
+        544
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hireflow/api/v1/applications",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Normalize & Validate Application",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3200,
+        544
+      ],
+      "parameters": {
+        "jsCode": "const req=$input.first().json;\nconst d=req.body||req;\n\nconst name=String(d.name||'').trim();\nconst email=String(d.email||'').trim().toLowerCase();\nconst rawRole=String(d.role||'').trim();\nconst role=rawRole?rawRole.toLowerCase().replace(/\\b\\w/g,c=>c.toUpperCase()):'';\n\nconst fileName=String(d.resumeFileName||'resume.pdf').trim();\nconst mime=String(d.resumeMimeType||'application/pdf').trim().toLowerCase();\nconst storageKey=String(d.resumeStorageKey||'').trim();\nconst resumeSizeBytes=Number(d.resumeSizeBytes||0);\nconst resumeText=String(d.resumeText||'')\n  .replace(/\\u0000/g,'')\n  .replace(/[ \\t]+\\n/g,'\\n')\n  .replace(/\\n{3,}/g,'\\n\\n')\n  .trim();\n\nconst errors=[];\nif(name.length<2) errors.push('Name is required.');\nif(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push('A valid email is required.');\nif(!role) errors.push('Role is required.');\nif(!resumeText) errors.push('Resume text is required.');\nif(resumeText.length>150000) errors.push('Resume text is unexpectedly large.');\nif(mime!=='application/pdf'&&!fileName.toLowerCase().endsWith('.pdf')) errors.push('Resume must be a PDF.');\nif(Number.isFinite(resumeSizeBytes)&&resumeSizeBytes>5*1024*1024) errors.push('Resume must be 5 MB or smaller.');\n\nconst AIRTABLE_BASE_ID=`HF-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;\nconst safe=s=>String(s).replace(/'/g,'’');\n\nreturn [{\n  json:{\n    application_id:AIRTABLE_BASE_ID,\n    name,\n    email,\n    role,\n    applied_at:new Date().toISOString(),\n    valid_input:errors.length===0,\n    validation_error:errors.join(' '),\n    duplicate_filter:`AND(LOWER({Email})=LOWER('${safe(email)}'),LOWER({Role})=LOWER('${safe(role)}'))`,\n    role_filter:`LOWER({Role})=LOWER('${safe(role)}')`,\n    resume_file_name:fileName||'resume.pdf',\n    resume_mime_type:mime||'application/pdf',\n    resume_storage_key:storageKey,\n    resume_size_bytes:Number.isFinite(resumeSizeBytes)?resumeSizeBytes:0,\n    resume_text:resumeText\n  }\n}];"
+      }
+    },
+    {
+      "name": "Application Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2912,
+        544
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid_input }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Lookup Existing Application",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -2688,
+        448
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "filterByFormula": "={{ $('Normalize & Validate Application').item.json.duplicate_filter }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Is New Application?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2464,
+        448
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Create Candidate Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -2240,
+        352
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Application ID": "={{ $('Normalize & Validate Application').item.json.application_id }}",
+            "Name": "={{ $('Normalize & Validate Application').item.json.name }}",
+            "Email": "={{ $('Normalize & Validate Application').item.json.email }}",
+            "Role": "={{ $('Normalize & Validate Application').item.json.role }}",
+            "Stage": "Received",
+            "Source": "HireFlow Web",
+            "Applied At ": "={{ $('Normalize & Validate Application').item.json.applied_at }}"
+          },
+          "matchingColumns": []
+        },
+        "options": {
+          "typecast": true
+        }
+      }
+    },
+    {
+      "name": "Return Application Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2016,
+        352
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {ok:true,AIRTABLE_BASE_ID:$(\"Normalize & Validate Application\").item.json.application_id,stage:\"Received\",message:\"Application received. A human recruiter will make the final hiring decision.\"} }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "name": "Application Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1792,
+        352
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Normalize & Validate Application').item.json.email }}",
+        "subject": "Application received - HireFlow AI",
+        "message": "=<div style=\"font-family:Arial,sans-serif;line-height:1.6\"><h2>Application Received</h2><p>Hi {{ $(\"Normalize & Validate Application\").item.json.name }},</p><p>Thank you for applying for the <strong>{{ $(\"Normalize & Validate Application\").item.json.role }}</strong> role.</p><p>Your application has been received and is being prepared for human recruiter review.</p><p><strong>Application ID:</strong> {{ $(\"Normalize & Validate Application\").item.json.application_id }}</p><p>AI may organize resume evidence, but it does not make the hiring decision.</p><p>Regards,<br><strong>HireFlow Recruiting Team</strong></p></div>",
+        "options": {}
+      }
+    },
+    {
+      "name": "Evaluate Parse Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1568,
+        352
+      ],
+      "parameters": {
+        "jsCode": "const source=$('Normalize & Validate Application').item.json;\nconst text=String(source.resume_text||'').replace(/\\s+/g,' ').trim();\nconst wordCount=text?text.split(/\\s+/).length:0;\nconst charCount=text.length;\nconst poor=wordCount<80||charCount<500;\n\nreturn [{\n  json:{\n    ...$input.first().json,\n    text,\n    parse_quality:poor?'poor':'good',\n    word_count:wordCount,\n    char_count:charCount\n  }\n}];"
+      }
+    },
+    {
+      "name": "Parse Quality OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -896,
+        352
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.parse_quality }}",
+              "rightValue": "good",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Fetch Role Rubric",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -672,
+        256
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "filterByFormula": "={{ $('Normalize & Validate Application').item.json.role_filter }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Role Rubric Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        256
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.Role }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Prepare Resume + Rubric",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ],
+      "parameters": {
+        "jsCode": "let text=$('Evaluate Parse Quality').item.json.text||'';\ntext=text.replace(/[\\u200B-\\u200D\\uFEFF]/g,'').replace(/\\s+/g,' ').trim();\nif(text.length>15000) text=text.slice(0,15000);\n\nconst r=$input.first().json;\nconst rubric={\n  role:r.Role||$('Normalize & Validate Application').item.json.role,\n  must_haves:r['Must Haves']||'',\n  nice_to_haves:r['Nice to Haves']||'',\n  notes:r.Notes||''\n};\n\nconst prompt = [\n  'You are an evidence-extraction assistant supporting a HUMAN recruiter. You do not make hiring decisions and you do not rank candidates.',\n  '',\n  'Compare the resume only against the role rubric. Ignore and do not infer protected or sensitive attributes including age, sex, gender, race, religion, disability, marital status, nationality, caste, sexual orientation, health information, or similar attributes.',\n  '',\n  'Use only evidence explicitly present in the resume. If evidence is missing, say it is missing or unclear; do not invent it.',\n  '',\n  'JOB RUBRIC:',\n  JSON.stringify(rubric),\n  '',\n  'RESUME:',\n  text,\n  '',\n  'Return ONLY valid JSON with exactly these keys:',\n  '{',\n  '\"role\":\"string\",',\n  '\"matched_requirements\":[{\"requirement\":\"string\",\"evidence\":\"concise resume evidence\"}],',\n  '\"missing_or_unclear_requirements\":[\"string\"],',\n  '\"relevant_experience\":[\"string\"],',\n  '\"relevant_projects\":[\"string\"],',\n  '\"education_summary\":\"string\",',\n  '\"skills\":[\"string\"],',\n  '\"concise_summary\":\"2-4 sentences for recruiter review\",',\n  '\"confidence\":\"low|medium|high\"',\n  '}',\n  '',\n  'The confidence field means confidence in the evidence extraction, not candidate quality or suitability. Do not output a hire/reject decision or candidate score. Do not include markdown fences.'\n].join('\\n');\n\nreturn [{\n  json:{\n    resume_text:text,\n    rubric,\n    gemini_request:{\n      contents:[{\n        role:'user',\n        parts:[{text:prompt}]\n      }],\n      generationConfig:{\n        temperature:0.2,\n        maxOutputTokens:2048,\n        responseMimeType:'application/json',\n        thinkingConfig:{thinkingBudget:0}\n      }\n    }\n  }\n}];"
+      }
+    },
+    {
+      "name": "Validate AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        112
+      ],
+      "parameters": {
+        "jsCode": "const input=$input.first().json;\nlet raw =\n  input.text ??\n  input.output ??\n  input.candidates?.[0]?.content?.parts?.map(p=>p?.text||'').join('') ??\n  '';\n\nif(typeof raw!=='string') raw=JSON.stringify(raw);\nraw=raw.replace(/```json|```/g,'').trim();\n\nlet p;\ntry{\n  p=JSON.parse(raw);\n}catch(e){\n  return [{\n    json:{\n      valid:false,\n      concise_summary:'AI output could not be validated. Human review required.',\n      confidence:'low',\n      raw_output:raw.slice(0,3000)\n    }\n  }];\n}\n\nconst required=['matched_requirements','missing_or_unclear_requirements','concise_summary','confidence'];\nconst valid=required.every(k=>Object.prototype.hasOwnProperty.call(p,k));\n\nreturn [{\n  json:{\n    ...p,\n    valid,\n    matched_requirements:Array.isArray(p.matched_requirements)?p.matched_requirements:[],\n    missing_or_unclear_requirements:Array.isArray(p.missing_or_unclear_requirements)?p.missing_or_unclear_requirements:[],\n    relevant_experience:Array.isArray(p.relevant_experience)?p.relevant_experience:[],\n    relevant_projects:Array.isArray(p.relevant_projects)?p.relevant_projects:[],\n    skills:Array.isArray(p.skills)?p.skills:[],\n    confidence:['low','medium','high'].includes(p.confidence)?p.confidence:'low'\n  }\n}];"
+      }
+    },
+    {
+      "name": "AI Output Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        112
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Save AI Review Packet",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        16
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create Candidate Record').item.json.id }}",
+            "Stage": "Awaiting Recruiter Review",
+            "Parse Quality": "good",
+            "AI Summary": "={{ $json.concise_summary }}",
+            "Requirements Found": "={{ JSON.stringify($json.matched_requirements) }}",
+            "Missing Requirements": "={{ JSON.stringify($json.missing_or_unclear_requirements) }}",
+            "Evidence ": "={{ JSON.stringify({experience:$json.relevant_experience,projects:$json.relevant_projects,education:$json.education_summary,skills:$json.skills}) }}",
+            "Confidence ": "={{ $json.confidence }}"
+          },
+          "matchingColumns": [
+            "id"
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Notify HR - Candidate Ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1024,
+        16
+      ],
+      "parameters": {
+        "sendTo": "recruiter@example.com",
+        "subject": "HireFlow AI — Candidate ready for human review",
+        "message": "=<div style=\"font-family:Arial,sans-serif;line-height:1.6\"><h2>Candidate Ready for Human Review</h2><p><strong>Candidate:</strong> {{ $(\"Normalize & Validate Application\").item.json.name }}</p><p><strong>Email:</strong> {{ $(\"Normalize & Validate Application\").item.json.email }}</p><p><strong>Role:</strong> {{ $(\"Normalize & Validate Application\").item.json.role }}</p><p><strong>Application ID:</strong> {{ $(\"Normalize & Validate Application\").item.json.application_id }}</p><hr><h3>AI Evidence Summary</h3><p>{{ $(\"Validate AI Output\").item.json.concise_summary }}</p><h3>Matched Requirements</h3><ul>{{ ($(\"Validate AI Output\").item.json.matched_requirements||[]).map(item=>`<li><strong>${item.requirement}</strong>: ${item.evidence}</li>`).join(\"\") }}</ul><h3>Missing / Unclear Requirements</h3><ul>{{ ($(\"Validate AI Output\").item.json.missing_or_unclear_requirements||[]).map(item=>`<li>${item}</li>`).join(\"\") }}</ul><p><strong>Extraction confidence:</strong> {{ $(\"Validate AI Output\").item.json.confidence }}</p><hr><p><strong>Human review required.</strong> AI has only organized resume evidence and has not made the hiring decision.</p><p>Regards,<br><strong>HireFlow AI</strong></p></div>",
+        "options": {}
+      }
+    },
+    {
+      "name": "Flag Invalid AI Output",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        800,
+        208
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create Candidate Record').item.json.id }}",
+            "Stage": "Needs Manual Review - AI Output",
+            "Parse Quality": "good",
+            "AI Summary": "AI output could not be validated. Human review required."
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Notify HR - AI Validation Failure",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1024,
+        208
+      ],
+      "parameters": {
+        "sendTo": "recruiter@example.com",
+        "subject": "HireFlow: AI evidence extraction needs manual review",
+        "message": "=The resume was parsed, but the AI evidence packet could not be validated.\n\nCandidate: {{ $(\"Normalize & Validate Application\").item.json.name }}\nRole: {{ $(\"Normalize & Validate Application\").item.json.role }}\nApplication ID: {{ $(\"Normalize & Validate Application\").item.json.application_id }}\n\nNo automated hiring decision was made. Please review manually.",
+        "options": {}
+      }
+    },
+    {
+      "name": "Flag Missing Role Rubric",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -224,
+        400
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create Candidate Record').item.json.id }}",
+            "Stage": "Needs Manual Review - Missing Role Rubric",
+            "Parse Quality": "good"
+          },
+          "matchingColumns": [
+            "id"
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Notify HR - Missing Role Rubric",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        400
+      ],
+      "parameters": {
+        "sendTo": "recruiter@example.com",
+        "subject": "HireFlow: Missing role rubric",
+        "message": "=No role rubric was found.\n\nRole: {{ $(\"Normalize & Validate Application\").item.json.role }}\nCandidate: {{ $(\"Normalize & Validate Application\").item.json.name }}\nApplication ID: {{ $(\"Normalize & Validate Application\").item.json.application_id }}\n\nThe candidate remains queued for human review.",
+        "options": {}
+      }
+    },
+    {
+      "name": "Flag Parse Failure",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -672,
+        448
+      ],
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create Candidate Record').item.json.id }}",
+            "Stage": "Needs Manual Review - Resume Parse",
+            "Parse Quality": "poor"
+          },
+          "matchingColumns": [
+            "id"
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Notify HR - Parse Failure",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -448,
+        448
+      ],
+      "parameters": {
+        "sendTo": "recruiter@example.com",
+        "subject": "HireFlow: Resume needs manual review",
+        "message": "=A resume could not be parsed reliably.\n\nCandidate: {{ $(\"Normalize & Validate Application\").item.json.name }}\nEmail: {{ $(\"Normalize & Validate Application\").item.json.email }}\nRole: {{ $(\"Normalize & Validate Application\").item.json.role }}\nApplication ID: {{ $(\"Normalize & Validate Application\").item.json.application_id }}\n\nThe candidate was not scored or rejected. Please review manually.",
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Duplicate Application",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2240,
+        544
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {ok:false,duplicate:true,message:\"An application already exists for this email and role.\",AIRTABLE_BASE_ID:$json[\"Application ID\"]||null} }}",
+        "options": {
+          "responseCode": 409
+        }
+      }
+    },
+    {
+      "name": "Duplicate Candidate Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -2016,
+        544
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Normalize & Validate Application').item.json.email }}",
+        "subject": "We already have your application",
+        "message": "=Hi {{ $(\"Normalize & Validate Application\").item.json.name }},\n\nWe already have an application for the {{ $(\"Normalize & Validate Application\").item.json.role }} role using this email address.\n\nYour existing application remains unchanged.\n\nRegards,\nHireFlow Recruiting Team",
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Invalid Application",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2688,
+        640
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {ok:false,error:$json.validation_error} }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "name": "Verify Application API Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3360,
+        544
+      ],
+      "parameters": {
+        "jsCode": "// Public export: authentication verifier omitted. Configure webhook authentication in n8n before use.\\nreturn [{ json: { ...$input.first().json, auth_ok: false } }];"
+      }
+    },
+    {
+      "name": "Application API Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3056,
+        544
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Unauthorized - Application API",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2880,
+        704
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "name": "Gemini REST API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        112
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.gemini_request }}",
+        "options": {
+          "response": {},
+          "timeout": 60000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Normalize & Validate Application": {
+      "main": [
+        [
+          {
+            "node": "Application Input Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Application Input Valid?": {
+      "main": [
+        [
+          {
+            "node": "Lookup Existing Application",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Invalid Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Existing Application": {
+      "main": [
+        [
+          {
+            "node": "Is New Application?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Application?": {
+      "main": [
+        [
+          {
+            "node": "Create Candidate Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Duplicate Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Candidate Record": {
+      "main": [
+        [
+          {
+            "node": "Return Application Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Application Accepted": {
+      "main": [
+        [
+          {
+            "node": "Application Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Parse Quality": {
+      "main": [
+        [
+          {
+            "node": "Parse Quality OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Quality OK?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Role Rubric",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Role Rubric": {
+      "main": [
+        [
+          {
+            "node": "Role Rubric Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Role Rubric Found?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Resume + Rubric",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag Missing Role Rubric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AI Output": {
+      "main": [
+        [
+          {
+            "node": "AI Output Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Output Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save AI Review Packet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag Invalid AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Review Packet": {
+      "main": [
+        [
+          {
+            "node": "Notify HR - Candidate Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Invalid AI Output": {
+      "main": [
+        [
+          {
+            "node": "Notify HR - AI Validation Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Missing Role Rubric": {
+      "main": [
+        [
+          {
+            "node": "Notify HR - Missing Role Rubric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Parse Failure": {
+      "main": [
+        [
+          {
+            "node": "Notify HR - Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Duplicate Application": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Candidate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /applications": {
+      "main": [
+        [
+          {
+            "node": "Verify Application API Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Application API Auth": {
+      "main": [
+        [
+          {
+            "node": "Application API Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Application API Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Validate Application",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Unauthorized - Application API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Application Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Parse Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Resume + Rubric": {
+      "main": [
+        [
+          {
+            "node": "Gemini REST API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini REST API": {
+      "main": [
+        [
+          {
+            "node": "Validate AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag Invalid AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "saveDataSuccessExecution": "none"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Public portfolio export. Reconnect credentials, Airtable resources, notification addresses, and webhook authentication before importing."
+  }
+}
