@@ -60,12 +60,13 @@ The production architecture was redesigned to extract PDF text upstream in Floot
 
 ```text
 frontend/   Floot application source snapshot
-docs/       Architecture and n8n workflow documentation
+n8n/        Sanitized n8n workflow exports
+docs/       Architecture and workflow documentation
 ```
 
 ## Security
 
-Secrets are intentionally excluded from this repository. Use environment variables / platform credentials for API keys, OAuth secrets, database credentials, and webhook authentication. Raw n8n workflow exports are not committed because they contain environment-specific webhook and credential bindings; the workflow architecture is documented under `docs/`.
+Secrets are intentionally excluded from this repository. Use environment variables / platform credentials for API keys, OAuth secrets, database credentials, and webhook authentication. The `n8n/` directory contains sanitized public exports of the application, public-read, and recruiter-read workflows. Credential bindings, private resource IDs, personal notification addresses, and recruiter-auth verification internals are removed. The human recruiter review workflow is documented under `docs/` rather than published as an executable export.
 
 ## Live application
 
