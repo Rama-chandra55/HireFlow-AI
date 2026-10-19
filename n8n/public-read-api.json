@@ -1,0 +1,494 @@
+{
+  "name": "HireFlow AI - Public Read API V1",
+  "nodes": [
+    {
+      "name": "GET /health",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/health",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Health",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":true,\"service\":\"HireFlow Public API\",\"version\":\"1.0.0\"}",
+        "options": {}
+      }
+    },
+    {
+      "name": "GET /roles",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        224
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/roles",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Fetch Roles",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        224
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Shape Roles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        224
+      ],
+      "parameters": {
+        "jsCode": "const roles=$input.all().map(i=>i.json).filter(r=>r.Role).map(r=>({role:r.Role,mustHaves:r['Must Haves']||'',niceToHaves:r['Nice to Haves']||'',notes:r.Notes||''})); return [{json:{ok:true,roles}}];"
+      }
+    },
+    {
+      "name": "Return Roles",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        224
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "GET /application-status",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        640
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/application-status",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Normalize Status Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const q=$input.first().json.query||{}; const AIRTABLE_BASE_ID=String(q.AIRTABLE_BASE_ID||'').trim().replace(/[^A-Za-z0-9_-]/g,''); const email=String(q.email||'').trim().toLowerCase(); const safeEmail=email.replace(/'/g,'’'); const valid=!!AIRTABLE_BASE_ID&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email); return [{json:{application_id:AIRTABLE_BASE_ID,email,valid,filter:`AND({Application ID}='${AIRTABLE_BASE_ID}',LOWER({Email})=LOWER('${safeEmail}'))`}}];"
+      }
+    },
+    {
+      "name": "Status Lookup Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Find Candidate for Status",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        544
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "filterByFormula": "={{ $('Normalize Status Lookup').item.json.filter }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Status Candidate Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        544
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Shape Candidate Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const d=$input.first().json; return [{json:{ok:true,application:{AIRTABLE_BASE_ID:d['Application ID'],name:d.Name,role:d.Role,stage:d.Stage,appliedAt:d['Applied At ']||null,interviewStart:d['Interview Start']||null,interviewEnd:d['Interview End ']||null}}}];"
+      }
+    },
+    {
+      "name": "Return Candidate Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        448
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Status Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        640
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Application not found.\"}",
+        "options": {
+          "responseCode": 404
+        }
+      }
+    },
+    {
+      "name": "Return Invalid Status Lookup",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        736
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Application ID and email are required.\"}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "name": "Verify Application Status Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        640
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Public export: authentication verifier omitted. Configure webhook authentication in n8n before use.\\nreturn [{ json: { ...$input.first().json, auth_ok: false } }];"
+      }
+    },
+    {
+      "name": "Application Status Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        280,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Unauthorized - Application Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        752
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    }
+  ],
+  "connections": {
+    "GET /health": {
+      "main": [
+        [
+          {
+            "node": "Return Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /roles": {
+      "main": [
+        [
+          {
+            "node": "Fetch Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Roles": {
+      "main": [
+        [
+          {
+            "node": "Shape Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Roles": {
+      "main": [
+        [
+          {
+            "node": "Return Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Status Lookup": {
+      "main": [
+        [
+          {
+            "node": "Status Lookup Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Lookup Valid?": {
+      "main": [
+        [
+          {
+            "node": "Find Candidate for Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Invalid Status Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Candidate for Status": {
+      "main": [
+        [
+          {
+            "node": "Status Candidate Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Candidate Found?": {
+      "main": [
+        [
+          {
+            "node": "Shape Candidate Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Status Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Candidate Status": {
+      "main": [
+        [
+          {
+            "node": "Return Candidate Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /application-status": {
+      "main": [
+        [
+          {
+            "node": "Verify Application Status Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Application Status Auth": {
+      "main": [
+        [
+          {
+            "node": "Application Status Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Application Status Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Status Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Unauthorized - Application Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Public portfolio export. Reconnect credentials and environment-specific resources before importing."
+  }
+}
