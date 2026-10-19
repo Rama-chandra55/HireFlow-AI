@@ -1,0 +1,7 @@
+.badge { display:inline-flex; align-items:center; gap:6px; width:fit-content; padding:6px 9px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--muted-foreground); font-size:.72rem; font-weight:600; line-height:1; white-space:nowrap; }
+.compact { padding:5px 7px; font-size:.67rem; }
+.success { border-color:color-mix(in srgb,var(--success) 28%,var(--border)); background:color-mix(in srgb,var(--success) 8%,var(--card)); color:var(--success); }
+.error { border-color:color-mix(in srgb,var(--error) 28%,var(--border)); background:color-mix(in srgb,var(--error) 7%,var(--card)); color:var(--error); }
+.warning { border-color:color-mix(in srgb,var(--warning) 30%,var(--border)); background:color-mix(in srgb,var(--warning) 8%,var(--card)); color:var(--warning); }
+.review { border-color:color-mix(in srgb,var(--info) 28%,var(--border)); background:color-mix(in srgb,var(--info) 8%,var(--card)); color:var(--info); }
+.neutral { background:var(--surface); color:var(--muted-foreground); }
