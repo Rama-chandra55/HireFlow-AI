@@ -60,13 +60,12 @@ The production architecture was redesigned to extract PDF text upstream in Floot
 
 ```text
 frontend/   Floot application source snapshot
-n8n/        Sanitized workflow exports
-docs/       Architecture and deployment notes
+docs/       Architecture and n8n workflow documentation
 ```
 
 ## Security
 
-Secrets are intentionally excluded from this repository. Use environment variables / platform credentials for API keys, OAuth secrets, database credentials, and webhook authentication.
+Secrets are intentionally excluded from this repository. Use environment variables / platform credentials for API keys, OAuth secrets, database credentials, and webhook authentication. Raw n8n workflow exports are not committed because they contain environment-specific webhook and credential bindings; the workflow architecture is documented under `docs/`.
 
 ## Live application
 
