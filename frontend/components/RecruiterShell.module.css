@@ -1,0 +1,29 @@
+.shell { min-height: 100dvh; display: grid; grid-template-columns: 260px minmax(0, 1fr); background: var(--background); color: var(--foreground); }
+.sidebar { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; padding: 22px 16px 16px; border-right: 1px solid var(--border); background: var(--sidebar); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 22px; color: inherit; text-decoration: none; font-weight: 700; }
+.brand strong { color: var(--primary); }
+.mark { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 9px; color: var(--primary-foreground); background: var(--primary); }
+.workspaceLabel { padding: 10px 10px 8px; color: var(--muted-foreground); font-size: .72rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.nav { display: grid; gap: 4px; }
+.nav a { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 11px; border-radius: 10px; color: var(--muted-foreground); text-decoration: none; font-size: .92rem; font-weight: 500; transition: background 160ms ease, color 160ms ease, transform 160ms ease; }
+.nav a:hover { color: var(--foreground); background: color-mix(in srgb, var(--card) 68%, transparent); transform: translateX(2px); }
+.nav a.active { color: var(--foreground); background: var(--card); box-shadow: var(--shadow); }
+.navCount { margin-left:auto; min-width:20px; height:20px; padding:0 6px; display:inline-grid; place-items:center; border-radius:999px; background:color-mix(in srgb,var(--primary) 12%,var(--card)); color:var(--primary); font:700 .61rem var(--font-family-monospace); }
+.push { margin-left: auto; opacity: .55; }
+.sidebarNote { margin-top: auto; display: flex; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--card) 65%, transparent); }
+.noteDot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 12%, transparent); }
+.sidebarNote strong { font-size: .78rem; }
+.sidebarNote p { margin: 4px 0 0; color: var(--muted-foreground); font-size: .73rem; line-height: 1.45; }
+.profile { margin-top: 12px; padding: 12px 8px 2px; display: flex; align-items: center; gap: 10px; }
+.avatar { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--secondary); color: var(--secondary-foreground); font-size: .75rem; font-weight: 700; }
+.avatar img { width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+.profileText { min-width: 0; display: grid; flex: 1; }
+.profileText strong { overflow: hidden; text-overflow: ellipsis; font-size: .82rem; }
+.profileText span { color: var(--muted-foreground); font-size: .72rem; }
+.workspace { min-width: 0; }
+.topbar { position: sticky; top: 0; z-index: 30; height: 64px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 28px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 90%, transparent); backdrop-filter: blur(16px); }
+.searchHint { margin-right: auto; width: min(420px, 48vw); display: flex; align-items: center; gap: 9px; color: var(--muted-foreground); font-size: .82rem; text-decoration:none; transition:color .16s ease; }.searchHint:hover{color:var(--foreground)}
+.searchHint kbd { margin-left: auto; border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font: 500 .68rem var(--font-family-monospace); background: var(--card); }
+.content { padding: 30px clamp(22px, 3vw, 42px) 56px; }
+@media (max-width: 900px) { .shell { grid-template-columns: 76px minmax(0,1fr); } .brand span:last-child, .workspaceLabel, .nav a:not(.active) span, .sidebarNote, .profileText, .push { display: none; } .brand { justify-content: center; padding-inline: 0; } .nav a { justify-content: center; padding: 0; } .profile { justify-content: center; padding-inline: 0; } }
+@media (max-width: 680px) { .shell { display: block; width:100%; overflow-x:hidden; } .sidebar { position: fixed; inset: auto 0 0; z-index: 60; width: 100%; height: 68px; padding: 7px 8px; border-right: 0; border-top: 1px solid var(--border); flex-direction: row; } .brand, .workspaceLabel, .sidebarNote, .profile { display: none; } .nav { width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:2px; } .nav a { position:relative; min-width:0; min-height: 52px; padding:4px 2px; gap:3px; flex-direction:column; font-size:.64rem; line-height:1; } .nav a:hover { transform:none; } .nav a svg{width:16px;height:16px}.navCount{position:absolute;top:2px;right:calc(50% - 25px);min-width:16px;height:16px;padding:0 4px;font-size:.52rem}.topbar { padding-inline: 16px; } .searchHint { width: auto; flex: 1; } .searchHint span, .searchHint kbd { display: none; } .content { width:100%; max-width:100%; overflow-x:hidden; padding: 22px 16px 94px; } }
