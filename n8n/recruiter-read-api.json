@@ -1,0 +1,733 @@
+{
+  "name": "HireFlow AI - Recruiter Read API V1",
+  "nodes": [
+    {
+      "name": "GET /recruiter/candidates",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/recruiter/candidates",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Fetch Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Shape Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const parse=(v,f)=>{try{return v?JSON.parse(v):f}catch{return f}}; const candidates=$input.all().map(i=>i.json).filter(d=>d['Application ID']).map(d=>({AIRTABLE_BASE_ID:d['Application ID'],name:d.Name||'',email:d.Email||'',role:d.Role||'',stage:d.Stage||'Received',source:d.Source||'',appliedAt:d['Applied At ']||null,parseQuality:d['Parse Quality']||null,aiSummary:d['AI Summary']||'',matchedRequirements:parse(d['Requirements Found'],[]),missingRequirements:parse(d['Missing Requirements'],[]),evidence:parse(String(d['Evidence ']||'').replace(/^=/,''),{}),confidence:String(d['Confidence ']||'').replace(/^=/,''),AIRTABLE_RECORD_ID:d['Recruiter Notes ']||'',interviewStart:d['Interview Start']||null,interviewEnd:d['Interview End ']||null,decisionRequired:d.Stage==='Awaiting Recruiter Review'||String(d.Stage||'').startsWith('Needs Manual Review')})); candidates.sort((a,b)=>String(b.appliedAt||'').localeCompare(String(a.appliedAt||''))); return [{json:{ok:true,candidates,count:candidates.length}}];"
+      }
+    },
+    {
+      "name": "Return Candidates",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "GET /recruiter/stats",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        224
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/recruiter/stats",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Fetch Candidates for Stats",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        224
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Calculate Recruiter Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        224
+      ],
+      "parameters": {
+        "jsCode": "const rows=$input.all().map(i=>i.json).filter(d=>d['Application ID']); const byRole={}; let awaitingReview=0,advanced=0,rejected=0,manualReview=0,received=0; for(const d of rows){const s=String(d.Stage||'Received'); const r=d.Role||'Unspecified'; byRole[r]=(byRole[r]||0)+1; if(s==='Awaiting Recruiter Review') awaitingReview++; else if(s.startsWith('Advanced')) advanced++; else if(s.startsWith('Rejected')) rejected++; else if(s.startsWith('Needs Manual Review')) manualReview++; else received++;} return [{json:{ok:true,stats:{total:rows.length,awaitingReview,manualReview,advanced,rejected,received,byRole}}}];"
+      }
+    },
+    {
+      "name": "Return Recruiter Stats",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        224
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "GET /recruiter/candidate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        640
+      ],
+      "parameters": {
+        "path": "hireflow/api/v1/recruiter/candidate",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Normalize Candidate Detail Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const q=$input.first().json.query||{}; const AIRTABLE_BASE_ID=String(q.AIRTABLE_BASE_ID||'').trim().replace(/[^A-Za-z0-9_-]/g,''); return [{json:{application_id:AIRTABLE_BASE_ID,valid:!!AIRTABLE_BASE_ID,filter:`{Application ID}='${AIRTABLE_BASE_ID}'`}}];"
+      }
+    },
+    {
+      "name": "Detail Lookup Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Find Candidate Detail",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        544
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "AIRTABLE_TABLE_ID"
+        },
+        "filterByFormula": "={{ $('Normalize Candidate Detail Lookup').item.json.filter }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Candidate Detail Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        544
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Shape Candidate Detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const d=$input.first().json; const parse=(v,f)=>{try{return v?JSON.parse(v):f}catch{return f}}; return [{json:{ok:true,candidate:{AIRTABLE_BASE_ID:d['Application ID'],name:d.Name||'',email:d.Email||'',role:d.Role||'',stage:d.Stage||'Received',source:d.Source||'',appliedAt:d['Applied At ']||null,parseQuality:d['Parse Quality']||null,aiSummary:d['AI Summary']||'',matchedRequirements:parse(d['Requirements Found'],[]),missingRequirements:parse(d['Missing Requirements'],[]),evidence:parse(String(d['Evidence ']||'').replace(/^=/,''),{}),confidence:String(d['Confidence ']||'').replace(/^=/,''),AIRTABLE_RECORD_ID:d['Recruiter Notes ']||'',interviewStart:d['Interview Start']||null,interviewEnd:d['Interview End ']||null,decisionRequired:d.Stage==='Awaiting Recruiter Review'||String(d.Stage||'').startsWith('Needs Manual Review')}}}];"
+      }
+    },
+    {
+      "name": "Return Candidate Detail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        448
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Candidate Detail Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        640
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Candidate not found.\"}",
+        "options": {
+          "responseCode": 404
+        }
+      }
+    },
+    {
+      "name": "Return Invalid Detail Lookup",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        736
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Application ID is required.\"}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "name": "Verify Recruiter Candidates Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Public export: recruiter authentication verifier intentionally omitted.\\n// Configure a secure authentication method before activating this webhook.\\nreturn [{ json: { ...$input.first().json, auth_ok: false } }];"
+      }
+    },
+    {
+      "name": "Recruiter Candidates Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Unauthorized - Recruiter Candidates",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        112
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "name": "Verify Recruiter Stats Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        224
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Public export: recruiter authentication verifier intentionally omitted.\\n// Configure a secure authentication method before activating this webhook.\\nreturn [{ json: { ...$input.first().json, auth_ok: false } }];"
+      }
+    },
+    {
+      "name": "Recruiter Stats Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        280,
+        224
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Unauthorized - Recruiter Stats",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        336
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "name": "Verify Recruiter Candidate Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        640
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Public export: recruiter authentication verifier intentionally omitted.\\n// Configure a secure authentication method before activating this webhook.\\nreturn [{ json: { ...$input.first().json, auth_ok: false } }];"
+      }
+    },
+    {
+      "name": "Recruiter Candidate Auth OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        280,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Return Unauthorized - Recruiter Candidate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        752
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\":false,\"error\":\"Unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Fetch Candidates": {
+      "main": [
+        [
+          {
+            "node": "Shape Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Candidates": {
+      "main": [
+        [
+          {
+            "node": "Return Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Candidates for Stats": {
+      "main": [
+        [
+          {
+            "node": "Calculate Recruiter Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Recruiter Stats": {
+      "main": [
+        [
+          {
+            "node": "Return Recruiter Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Candidate Detail Lookup": {
+      "main": [
+        [
+          {
+            "node": "Detail Lookup Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detail Lookup Valid?": {
+      "main": [
+        [
+          {
+            "node": "Find Candidate Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Invalid Detail Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Candidate Detail": {
+      "main": [
+        [
+          {
+            "node": "Candidate Detail Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidate Detail Found?": {
+      "main": [
+        [
+          {
+            "node": "Shape Candidate Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Candidate Detail Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Candidate Detail": {
+      "main": [
+        [
+          {
+            "node": "Return Candidate Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /recruiter/candidates": {
+      "main": [
+        [
+          {
+            "node": "Verify Recruiter Candidates Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Recruiter Candidates Auth": {
+      "main": [
+        [
+          {
+            "node": "Recruiter Candidates Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recruiter Candidates Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Unauthorized - Recruiter Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /recruiter/stats": {
+      "main": [
+        [
+          {
+            "node": "Verify Recruiter Stats Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Recruiter Stats Auth": {
+      "main": [
+        [
+          {
+            "node": "Recruiter Stats Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recruiter Stats Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Candidates for Stats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Unauthorized - Recruiter Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET /recruiter/candidate": {
+      "main": [
+        [
+          {
+            "node": "Verify Recruiter Candidate Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Recruiter Candidate Auth": {
+      "main": [
+        [
+          {
+            "node": "Recruiter Candidate Auth OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recruiter Candidate Auth OK?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Candidate Detail Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Unauthorized - Recruiter Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Public portfolio export. Recruiter authentication implementation and credential/resource bindings are intentionally omitted."
+  }
+}
